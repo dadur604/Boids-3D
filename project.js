@@ -1,5 +1,7 @@
 import {defs, tiny} from './examples/common.js';
 import {Shape_From_File} from "./examples/obj-file-demo.js";
+import {Bird} from "./components/bird.js"
+
 
 const {
     Vector, Vector3, vec, vec3, vec4, color, hex_color, Shader, Matrix, Mat4, Light, Shape, Material, Scene,
@@ -24,6 +26,9 @@ const gravity = 0.0015;
 let bird_pos = vec3(...polar_to_cart(b_theta, b_phi, planet_radius + 10));
 const bird_speed = 20;
 
+const initial_bird_position = vec3(...polar_to_cart(b_theta, b_phi, planet_radius + 10));
+const initial_bird_direction = vec3(0,1,0);
+
 const sun_color = hex_color("#ffffff");
 
 export class Project extends Scene {
@@ -43,6 +48,12 @@ export class Project extends Scene {
                 {ambient: 0.5, diffusivity: .5, color: planet_1_color})           
         }
 
+        this.player_bird = new Bird(
+            initial_bird_position,
+            initial_bird_direction,
+            this.shapes.bird,
+            this.materials.planet_1.override({color: hex_color("#2222ff")})
+        )
 
         this.initial_camera_location = Mat4.look_at(vec3(0, 10, 20), vec3(0, 0, 0), vec3(0, 1, 0));
 
@@ -82,55 +93,18 @@ export class Project extends Scene {
         this.shapes.sphere16.draw(context, program_state, planet_transform, this.materials.planet_1)
 
         // ====Bird====
-        
-        const gravity_vector = bird_pos.times(-1).normalized();
-
-
-        const current_height = bird_pos.norm();
-
-        // add velocity plus control_x
-        // const bird_velocity_x = gravity_vector.cross(bird_velocity).normalized().times(this.control_x).times(0.1).times(dt)
-        // bird_velocity.add_by(bird_velocity_x);
-
-        // bird_velocity.add_by(gravity_vector.times(gravity));
-        bird_velocity.normalize();
-        bird_velocity.scale_by(bird_speed);
-        bird_velocity.scale_by(dt);
-
-        const temp_bird_pos = bird_pos.plus(bird_velocity)
-
-        bird_pos = temp_bird_pos.normalized().times(current_height);
-
-        const fromDirection = bird_velocity.cross(gravity_vector.cross(bird_velocity));
-        const toDirection = gravity_vector;
-        const axis = fromDirection.cross(toDirection);
-        let angleRadians = Math.acos(fromDirection.normalized().dot(toDirection.normalized()));
 
         const turn_x = this.control_x_l * -1 + this.control_x_r * 1;
+        this.player_bird.update(dt, turn_x);
 
-        bird_velocity = Mat4.rotation(turn_x * 0.1 * dt, gravity_vector[0], gravity_vector[1], gravity_vector[2]).times(bird_velocity.to4(false)).to3();
-        if (!isNaN(angleRadians)) {
-            while (angleRadians > (Math.PI / 2)) {
-                angleRadians -= (Math.PI)
-            }
-            bird_velocity = Mat4.rotation(angleRadians, axis[0], axis[1], axis[2]).times(bird_velocity.to4(false)).to3(); 
-        }
-
-        console.log(turn_x);
-
-
-        let bird_transform = Mat4.rotation(- Math.PI, 0,1,0);
-        // let bird_transform = Mat4.identity();
-        bird_transform.pre_multiply(Mat4.inverse(Mat4.look_at(vec3(0,0,0), bird_velocity, bird_pos)));
-        bird_transform.pre_multiply(Mat4.translation(...bird_pos));
-        this.shapes.bird.draw(context, program_state, bird_transform, this.materials.planet_1.override({color: hex_color("#2222ff")}));
+        this.player_bird.draw(context, program_state);
 
         // ====Camera====
         
         program_state.set_camera(Mat4.look_at(
-            bird_pos.plus(bird_pos.normalized().times(20).plus(bird_velocity.normalized().times(-5))),
-            bird_pos,
-            bird_velocity));
+            this.player_bird.position.plus(this.player_bird.position.normalized().times(20).plus(this.player_bird.direction.normalized().times(-20))),
+            this.player_bird.position,
+            this.player_bird.direction));
         // ==============
     }
 }
