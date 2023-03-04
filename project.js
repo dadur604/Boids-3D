@@ -46,13 +46,14 @@ export class Project extends Scene {
 
         this.initial_camera_location = Mat4.look_at(vec3(0, 10, 20), vec3(0, 0, 0), vec3(0, 1, 0));
 
-        this.control_x = 0;
+        this.control_x_l = 0;
+        this.control_x_r = 0;
     }
 
     make_control_panel() {
         // Draw the scene's buttons, setup their actions and keyboard shortcuts, and monitor live measurements.
-        this.key_triggered_button("Turn Right", ["d"], () => this.control_x += 1, undefined, () => this.control_x -= 0);
-        this.key_triggered_button("Turn Left", ["a"], () => this.control_x -= 1, undefined, () => this.control_x += 0);
+        this.key_triggered_button("Turn Left", ["a"], () => this.control_x_l = 1, undefined, () => this.control_x_l = 0);
+        this.key_triggered_button("Turn Right", ["d"], () => this.control_x_r = 1, undefined, () => this.control_x_r = 0);
     }
 
     display(context, program_state) {
@@ -84,18 +85,43 @@ export class Project extends Scene {
         
         const gravity_vector = bird_pos.times(-1).normalized();
 
-        bird_velocity.add_by(gravity_vector.cross(bird_velocity).normalized().times(this.control_x).times(0.1).times(dt))
 
-        bird_velocity.add_by(gravity_vector.times(gravity));
+        const current_height = bird_pos.norm();
+
+        // add velocity plus control_x
+        // const bird_velocity_x = gravity_vector.cross(bird_velocity).normalized().times(this.control_x).times(0.1).times(dt)
+        // bird_velocity.add_by(bird_velocity_x);
+
+        // bird_velocity.add_by(gravity_vector.times(gravity));
         bird_velocity.normalize();
         bird_velocity.scale_by(bird_speed);
         bird_velocity.scale_by(dt);
 
-        bird_pos = bird_pos.plus(bird_velocity)
+        const temp_bird_pos = bird_pos.plus(bird_velocity)
+
+        bird_pos = temp_bird_pos.normalized().times(current_height);
+
+        const fromDirection = bird_velocity.cross(gravity_vector.cross(bird_velocity));
+        const toDirection = gravity_vector;
+        const axis = fromDirection.cross(toDirection);
+        let angleRadians = Math.acos(fromDirection.normalized().dot(toDirection.normalized()));
+
+        const turn_x = this.control_x_l * -1 + this.control_x_r * 1;
+
+        bird_velocity = Mat4.rotation(turn_x * 0.1 * dt, gravity_vector[0], gravity_vector[1], gravity_vector[2]).times(bird_velocity.to4(false)).to3();
+        if (!isNaN(angleRadians)) {
+            while (angleRadians > (Math.PI / 2)) {
+                angleRadians -= (Math.PI)
+            }
+            bird_velocity = Mat4.rotation(angleRadians, axis[0], axis[1], axis[2]).times(bird_velocity.to4(false)).to3(); 
+        }
+
+        console.log(turn_x);
+
 
         let bird_transform = Mat4.rotation(- Math.PI, 0,1,0);
         // let bird_transform = Mat4.identity();
-        bird_transform.pre_multiply(Mat4.inverse(Mat4.look_at(vec3(0,0,0), bird_velocity, vec3(0,1,0))));
+        bird_transform.pre_multiply(Mat4.inverse(Mat4.look_at(vec3(0,0,0), bird_velocity, bird_pos)));
         bird_transform.pre_multiply(Mat4.translation(...bird_pos));
         this.shapes.bird.draw(context, program_state, bird_transform, this.materials.planet_1.override({color: hex_color("#2222ff")}));
 
@@ -108,5 +134,4 @@ export class Project extends Scene {
         // ==============
     }
 }
-
 

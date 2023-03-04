@@ -1,0 +1,9 @@
+class Bird {
+  constructor() {
+
+  }
+
+  draw() {
+    
+  }
+}
