@@ -74,6 +74,8 @@ export class Project extends Scene {
         this.control_x_r = 0;
         this.control_y_u = 0;
         this.control_y_d = 0;
+
+        this.view_globe = false;
     }
 
     make_control_panel() {
@@ -81,8 +83,10 @@ export class Project extends Scene {
         this.key_triggered_button("Turn Left", ["a"], () => this.control_x_l = 1, undefined, () => this.control_x_l = 0);
         this.key_triggered_button("Turn Right", ["d"], () => this.control_x_r = 1, undefined, () => this.control_x_r = 0);
         
-        this.key_triggered_button("Pitch Up", ["ArrowDown"], () => this.control_y_u = 1, undefined, () => this.control_y_u = 0);
-        this.key_triggered_button("Pitch Down", ["ArrowUp"], () => this.control_y_d = 1, undefined, () => this.control_y_d = 0);
+        this.key_triggered_button("Pitch Up", ["s"], () => this.control_y_u = 1, undefined, () => this.control_y_u = 0);
+        this.key_triggered_button("Pitch Down", ["w"], () => this.control_y_d = 1, undefined, () => this.control_y_d = 0);
+
+        this.key_triggered_button("View Globe", ["r"], () => this.view_globe = !this.view_globe);
     }
 
     display(context, program_state) {
@@ -126,10 +130,15 @@ export class Project extends Scene {
 
         // ====Camera====
         
-        program_state.set_camera(Mat4.look_at(
-            this.player_bird.position.plus(this.player_bird.position.normalized().times(20).plus(this.player_bird.direction.normalized().times(-20))),
-            this.player_bird.position,
-            this.player_bird.direction));
+        if (this.view_globe) {
+            program_state.set_camera(Mat4.look_at(this.player_bird.position.normalized().times(planet_radius * 4), vec3(0,0,0), this.player_bird.direction))
+        } else {
+            program_state.set_camera(Mat4.look_at(
+                this.player_bird.position.plus(this.player_bird.position.normalized().times(20).plus(this.player_bird.direction.normalized().times(-20))),
+                this.player_bird.position,
+                this.player_bird.direction));
+        }
+        
         // ==============
     }
 }
