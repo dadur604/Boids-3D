@@ -1,6 +1,7 @@
 import {defs, tiny} from './examples/common.js';
 import {Shape_From_File} from "./examples/obj-file-demo.js";
 import {Bird} from "./components/bird.js"
+import { BirdManager } from './components/bird_manager.js';
 
 
 const {
@@ -16,15 +17,14 @@ const polar_to_cart = (theta, phi, r) => ([
 ]);
 
 
-const planet_radius = 50;
+const planet_radius = 120;
 const planet_1_color = hex_color("#aaaaaa");
 
 const b_theta = Math.PI / 2;
 const b_phi = 0;
-let bird_velocity = vec3(0,1,0);
-const gravity = 0.0015;
 let bird_pos = vec3(...polar_to_cart(b_theta, b_phi, planet_radius + 10));
-const bird_speed = 20;
+
+const num_birds = 100;
 
 const initial_bird_position = vec3(...polar_to_cart(b_theta, b_phi, planet_radius + 10));
 const initial_bird_direction = vec3(0,1,0);
@@ -48,23 +48,41 @@ export class Project extends Scene {
                 {ambient: 0.5, diffusivity: .5, color: planet_1_color})           
         }
 
+        this.bird_manager = new BirdManager()
+
         this.player_bird = new Bird(
+            this.bird_manager,
             initial_bird_position,
             initial_bird_direction,
             this.shapes.bird,
             this.materials.planet_1.override({color: hex_color("#2222ff")})
         )
 
+        this.other_birds = [...new Array(num_birds)].map(() => new Bird(
+            this.bird_manager,
+            vec3(...polar_to_cart(Math.random() * 2 * Math.PI, Math.random() * 2 * Math.PI, Math.random() * 100 + planet_radius)),
+            // initial_bird_position.copy(),
+            vec3(0,0,0).randomized(1),
+            // initial_bird_direction.copy(),
+            this.shapes.bird,
+            this.materials.planet_1.override({color: hex_color("#22ff22")})
+        ));
+
         this.initial_camera_location = Mat4.look_at(vec3(0, 10, 20), vec3(0, 0, 0), vec3(0, 1, 0));
 
         this.control_x_l = 0;
         this.control_x_r = 0;
+        this.control_y_u = 0;
+        this.control_y_d = 0;
     }
 
     make_control_panel() {
         // Draw the scene's buttons, setup their actions and keyboard shortcuts, and monitor live measurements.
         this.key_triggered_button("Turn Left", ["a"], () => this.control_x_l = 1, undefined, () => this.control_x_l = 0);
         this.key_triggered_button("Turn Right", ["d"], () => this.control_x_r = 1, undefined, () => this.control_x_r = 0);
+        
+        this.key_triggered_button("Pitch Up", ["ArrowDown"], () => this.control_y_u = 1, undefined, () => this.control_y_u = 0);
+        this.key_triggered_button("Pitch Down", ["ArrowUp"], () => this.control_y_d = 1, undefined, () => this.control_y_d = 0);
     }
 
     display(context, program_state) {
@@ -95,9 +113,16 @@ export class Project extends Scene {
         // ====Bird====
 
         const turn_x = this.control_x_l * -1 + this.control_x_r * 1;
-        this.player_bird.update(dt, turn_x);
+        const turn_y = this.control_y_u * 1 + this.control_y_d * -1;
+        this.player_bird.update(dt, {turn_x, turn_y});
+        for (const bird of this.other_birds) {
+            bird.update(dt);
+        }
 
         this.player_bird.draw(context, program_state);
+        for (const bird of this.other_birds) {
+            bird.draw(context, program_state);
+        }
 
         // ====Camera====
         
