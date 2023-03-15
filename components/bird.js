@@ -15,9 +15,12 @@ const max_height = 300;
 const height_clamp_boundary = 3.0;
 
 export class Bird {
-  constructor(bird_manager, position, direction, shape, material) {
+  constructor(bird_manager, collision_manager, position, direction, shape, material, cone) {
     this.bird_manager = bird_manager;
     this.bird_manager.add_bird(this);
+
+    this.collision_manager = collision_manager;
+    this.collision = null;
 
     this.position = position
     this.direction = direction;
@@ -32,6 +35,8 @@ export class Bird {
     this.smoothed_y = 0;
 
     this.bird_speed = bird_speed;
+  
+    this.cone = cone;
   }
 
   // turn_x -1 or +1 if turning left or right.
@@ -81,16 +86,16 @@ export class Bird {
 
     let clamped_turn_y = this.smoothed_y;
     
-    // Clamp close to ground; start pitching up
-    if (current_height < (min_height + height_clamp_boundary)) {
-      const t = (height_clamp_boundary - (current_height - min_height)) / height_clamp_boundary;
-      clamped_turn_y = t * 1 + (1-t) * clamped_turn_y;
-    }
-    // Clamp too high; start pitching down
-    if (current_height > (max_height - height_clamp_boundary)) {
-      const t = (height_clamp_boundary - (max_height - current_height)) / height_clamp_boundary;
-      clamped_turn_y = t * -1 + (1-t) * clamped_turn_y;
-    }
+    // // Clamp close to ground; start pitching up
+    // if (current_height < (min_height + height_clamp_boundary)) {
+    //   const t = (height_clamp_boundary - (current_height - min_height)) / height_clamp_boundary;
+    //   clamped_turn_y = t * 1 + (1-t) * clamped_turn_y;
+    // }
+    // // Clamp too high; start pitching down
+    // if (current_height > (max_height - height_clamp_boundary)) {
+    //   const t = (height_clamp_boundary - (max_height - current_height)) / height_clamp_boundary;
+    //   clamped_turn_y = t * -1 + (1-t) * clamped_turn_y;
+    // }
 
     velocity = Mat4.rotation(clamped_turn_y * 20 * dt, roll_axis[0], roll_axis[1], roll_axis[2]).times(velocity.to4(false)).to3();
 
@@ -102,7 +107,6 @@ export class Bird {
         velocity = Mat4.rotation(angleRadians, axis[0], axis[1], axis[2]).times(velocity.to4(false)).to3(); 
     }
 
-
     let visual_turn_x = - Math.PI / 2 + Math.acos(velocity.normalized().dot(this.direction.cross(gravity_vector).normalized()));
     visual_turn_x *= 500
     visual_turn_x = Math.max(-1, Math.min(1, visual_turn_x));
@@ -110,6 +114,13 @@ export class Bird {
     this.direction = velocity.normalized();
     
     this.roll_angle = (1 - roll_speed_coefficient) * this.roll_angle + roll_speed_coefficient * max_roll_angle * visual_turn_x;
+  }
+
+  calculateCollision() {
+    // check for collision here once we have decided direction
+    // Run collision checking on another thread
+    
+    this.collision = this.collision_manager.get_collision_vector(this.position, this.direction);
   }
 
   calculateBoidDesiredDirection() {
@@ -143,8 +154,10 @@ export class Bird {
       let difference = this.position.minus(bird.position);
       if (difference.norm() !== 0) {
         let awayDirection = difference.normalized();
+        awayDirection = awayDirection.times(1 + (this.bird_manager.minimum_distance / difference.norm()))
+        // console.log(awayDirection)
         seperationDirection.add_by(
-          awayDirection.times(1 + (this.bird_manager.minimum_distance / difference.norm()))
+          awayDirection
         )
       }
       
@@ -185,11 +198,27 @@ export class Bird {
       direction.normalize();
     }
 
+    // Steer away from collisions
+    if (this.collision !== null) {
+      let {normal, t} = this.collision;
+
+      if (t < 30) {
+        // On collision course
+
+        // get our direction reflected across the normal
+        let reflectedDirection = direction.minus(normal.times(2 * direction.dot(normal)));
+        // If we are facing towards the normal, bias our reflection to be perpendicular to the normal
+        if (Math.abs(direction.dot(normal)) > 0.8) reflectedDirection = (this.position.cross(normal)).normalized();
+        const lerp_t = this.bird_manager.collision_avoidance_lerp_amount * 10/t;
+        direction = reflectedDirection.normalized().times(lerp_t).plus(direction.times(1-lerp_t));
+      }
+    }
+
     return direction;
   }
 
   draw(context, program_state, initial_transformation = Mat4.identity()) {
-    let bird_transform = initial_transformation;
+    let bird_transform = initial_transformation.copy();
 
     // Rotate model in model space such that bird beak is facing correctly
     bird_transform.pre_multiply(Mat4.rotation(- Math.PI, 0,1,0));
@@ -200,6 +229,35 @@ export class Bird {
     // Translate to bird position in world space
     bird_transform.pre_multiply(Mat4.translation(...this.position));
     this.shape.draw(context, program_state, bird_transform, this.material);
+
+    if (this.collision !== null) {
+
+      let arrow_position = this.position.plus(this.direction.times(this.collision.t));
+      let arrow_direction = this.collision.normal;
+
+      let arrow_transform = initial_transformation.copy();
+      // Scale cone by 5
+      // arrow_transform.pre_multiply(Mat4.scale(10,10,10));
+      // Rotate cone such that it faces arrow direction
+      arrow_transform.pre_multiply(Mat4.inverse(Mat4.look_at(vec3(0,0,0), arrow_direction, arrow_position)));
+      // Translate to arrow position in world space
+      arrow_transform.pre_multiply(Mat4.translation(...arrow_position));
+      this.cone.draw(context, program_state, arrow_transform, this.material.override({color: hex_color("#ff2222")}))
+
+      if (this.reflectedDirection) {
+        let reflectedArrowDirection = this.reflectedDirection;
+
+        let reflectedArrowTransform = initial_transformation.copy();
+        // Scale cone by 5
+        reflectedArrowTransform.pre_multiply(Mat4.scale(1,1,5));
+        // Rotate cone such that it faces arrow direction
+        reflectedArrowTransform.pre_multiply(Mat4.inverse(Mat4.look_at(vec3(0,0,0), reflectedArrowDirection, arrow_position)));
+        // Translate to arrow position in world space
+        reflectedArrowTransform.pre_multiply(Mat4.translation(...arrow_position));
+
+        this.cone.draw(context, program_state, reflectedArrowTransform, this.material.override({color: hex_color("#ffff22")}))
+      }
+    }
 
   }
 }

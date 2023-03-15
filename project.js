@@ -2,6 +2,7 @@ import {defs, tiny} from './examples/common.js';
 import {Shape_From_File} from "./examples/obj-file-demo.js";
 import {Bird} from "./components/bird.js"
 import { BirdManager } from './components/bird_manager.js';
+import { CollisionManager } from './components/collision_manager.js';
 
 
 const {
@@ -31,6 +32,11 @@ const initial_bird_direction = vec3(0,1,0);
 
 const sun_color = hex_color("#ffffff");
 
+// update collisions only ten twenty per second
+// and each update, only update `collision_batch_size` birds
+const collision_dt = 0.05;
+const collision_batch_size = 10;
+
 export class Project extends Scene {
     constructor() {
         // constructor(): Scenes begin by populating initial values like the Shapes and Materials they'll need.
@@ -39,8 +45,33 @@ export class Project extends Scene {
         // At the beginning of our program, load one of each of these shape definitions onto the GPU.
         this.shapes = {
             sphere16: new defs.Subdivision_Sphere(4),
-            bird: new Shape_From_File("assets/bird.obj")
+            bird: new Shape_From_File("assets/bird.obj"),
+            cone: new defs.Closed_Cone(4, 4, [[0, 1], [1, 0]])
         };
+
+        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
+            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(1,0.1,0.1).pre_multiply(Mat4.translation(1,0,0)))
+
+        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
+            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(0.2,0.2,0.2).pre_multiply(Mat4.translation(0.5,0.5,0)))
+
+        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
+            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(0.1,1,0.2).pre_multiply(Mat4.translation(0,1,0)))
+
+        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
+            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(1,1,0.2).pre_multiply(Mat4.translation(0.5,0.6,0)))
+
+        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
+            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(1,0.1,0.1).pre_multiply(Mat4.translation(-1,0,0)))
+
+        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
+            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(0.2,0.2,0.2).pre_multiply(Mat4.translation(-0.5,0.5,0)))
+
+        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
+            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(0.1,1,0.2).pre_multiply(Mat4.translation(0,-1,0)))
+
+        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
+            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(1,1,0.2).pre_multiply(Mat4.translation(0.5,-0.6,0)))
 
         // *** Materials
         this.materials = {
@@ -49,23 +80,28 @@ export class Project extends Scene {
         }
 
         this.bird_manager = new BirdManager()
+        this.collision_manager = new CollisionManager(this.shapes.sphere16, Mat4.scale(planet_radius,planet_radius,planet_radius))
 
         this.player_bird = new Bird(
             this.bird_manager,
+            this.collision_manager,
             initial_bird_position,
             initial_bird_direction,
             this.shapes.bird,
-            this.materials.planet_1.override({color: hex_color("#2222ff")})
+            this.materials.planet_1.override({color: hex_color("#2222ff")}),
+            this.shapes.cone
         )
 
         this.other_birds = [...new Array(num_birds)].map(() => new Bird(
             this.bird_manager,
+            this.collision_manager,
             vec3(...polar_to_cart(Math.random() * 2 * Math.PI, Math.random() * 2 * Math.PI, Math.random() * 100 + planet_radius)),
             // initial_bird_position.copy(),
             vec3(0,0,0).randomized(1),
             // initial_bird_direction.copy(),
             this.shapes.bird,
-            this.materials.planet_1.override({color: hex_color("#22ff22")})
+            this.materials.planet_1.override({color: hex_color("#22ff22")}),
+            this.shapes.cone
         ));
 
         this.initial_camera_location = Mat4.look_at(vec3(0, 10, 20), vec3(0, 0, 0), vec3(0, 1, 0));
@@ -76,6 +112,9 @@ export class Project extends Scene {
         this.control_y_d = 0;
 
         this.view_globe = false;
+
+        this.last_collision_time = 0;
+        this.last_collision_batch_idx = 0;
     }
 
     make_control_panel() {
@@ -121,6 +160,20 @@ export class Project extends Scene {
         this.player_bird.update(dt, {turn_x, turn_y});
         for (const bird of this.other_birds) {
             bird.update(dt);
+        }
+
+        // Collisions
+        if (t - this.last_collision_time > collision_dt) {
+            this.last_collision_time = t;
+
+            this.player_bird.calculateCollision();
+            for (let i = this.last_collision_batch_idx; i < this.last_collision_batch_idx + collision_batch_size; i++) {
+                if (i >= this.other_birds.length) continue;
+                this.other_birds[i].calculateCollision();
+            }
+
+            this.last_collision_batch_idx += collision_batch_size;
+            if (this.last_collision_batch_idx >= this.other_birds.length) this.last_collision_batch_idx = 0;
         }
 
         this.player_bird.draw(context, program_state);

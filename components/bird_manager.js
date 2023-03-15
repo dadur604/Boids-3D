@@ -7,6 +7,8 @@ export class BirdManager {
   alignment_lerp_amount = 0.2;
   cohesion_lerp_amount = 0.2;
 
+  collision_avoidance_lerp_amount = 0.2;
+
   constructor() {
     this.birds = []
   }
