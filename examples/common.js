@@ -597,7 +597,17 @@ const Phong_Shader = defs.Phong_Shader =
                 // pixel fragment's proximity to each of the 3 vertices (barycentric interpolation).
                 varying vec3 N, vertex_worldspace;
                 // ***** PHONG SHADING HAPPENS HERE: *****                                       
-                vec3 phong_model_lights( vec3 N, vec3 vertex_worldspace ){                                        
+                vec3 phong_model_lights( vec3 N, vec3 vertex_worldspace ){       
+                    
+                    float height = length(vertex_worldspace);
+                    vec4 grass = vec4(0,1,0,1);
+                    vec4 dirt = vec4(0.5,0.3,0,1);
+                    vec4 snow = vec4(1,1,1,1);
+                    
+                    float dirt_t = smoothstep(120.0, 140.0, height);
+                    float snow_t = smoothstep(140.0, 200.0, height);
+                    vec4 mat_color = grass + dirt_t * (dirt - grass) + snow_t * (snow - dirt);
+
                     // phong_model_lights():  Add up the lights' contributions.
                     vec3 E = normalize( camera_center - vertex_worldspace );
                     vec3 result = vec3( 0.0 );
@@ -620,7 +630,7 @@ const Phong_Shader = defs.Phong_Shader =
                         float specular = pow( max( dot( N, H ), 0.0 ), smoothness );
                         float attenuation = 1.0 / (1.0 + light_attenuation_factors[i] * distance_to_light * distance_to_light );
                         
-                        vec3 light_contribution = shape_color.xyz * light_colors[i].xyz * diffusivity * diffuse
+                        vec3 light_contribution = mat_color.xyz * light_colors[i].xyz * diffusivity * diffuse
                                                                   + light_colors[i].xyz * specularity * specular;
                         result += attenuation * light_contribution;
                       }
@@ -667,6 +677,8 @@ const Phong_Shader = defs.Phong_Shader =
             gl.uniform1f(gpu.diffusivity, material.diffusivity);
             gl.uniform1f(gpu.specularity, material.specularity);
             gl.uniform1f(gpu.smoothness, material.smoothness);
+            gl.uniform1f(gpu.smoothness, material.smoothness);
+            gl.uniform2fv(gpu.tex_offset, material.tex_offset);
         }
 
         send_gpu_state(gl, gpu, gpu_state, model_transform) {
@@ -710,7 +722,7 @@ const Phong_Shader = defs.Phong_Shader =
             // within this function, one data field at a time, to fully initialize the shader for a draw.
 
             // Fill in any missing fields in the Material object with custom defaults for this shader:
-            const defaults = {color: color(0, 0, 0, 1), ambient: 0, diffusivity: 1, specularity: 1, smoothness: 40};
+            const defaults = {color: color(0, 0, 0, 1), ambient: 0, diffusivity: 1, specularity: 1, smoothness: 40, tex_offset: vec(0, 0)};
             material = Object.assign({}, defaults, material);
 
             this.send_material(context, gpu_addresses, material);
@@ -731,6 +743,7 @@ const Textured_Phong = defs.Textured_Phong =
                 attribute vec3 position, normal;                            
                 // Position is expressed in object coordinates.
                 attribute vec2 texture_coord;
+                uniform vec2 tex_offset;
                 
                 uniform mat4 model_transform;
                 uniform mat4 projection_camera_model_transform;
@@ -742,7 +755,7 @@ const Textured_Phong = defs.Textured_Phong =
                     N = normalize( mat3( model_transform ) * normal / squared_scale);
                     vertex_worldspace = ( model_transform * vec4( position, 1.0 ) ).xyz;
                     // Turn the per-vertex texture coordinate into an interpolated variable.
-                    f_tex_coord = texture_coord;
+                    f_tex_coord = texture_coord + tex_offset;
                   } `;
         }
 

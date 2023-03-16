@@ -3,10 +3,11 @@ import {Shape_From_File} from "./examples/obj-file-demo.js";
 import {Bird} from "./components/bird.js"
 import { BirdManager } from './components/bird_manager.js';
 import { CollisionManager } from './components/collision_manager.js';
+import { BirdModel } from './components/bird_model.js';
 
 
 const {
-    Vector, Vector3, vec, vec3, vec4, color, hex_color, Shader, Matrix, Mat4, Light, Shape, Material, Scene,
+    Vector, Vector3, vec, vec3, vec4, color, hex_color, Shader, Matrix, Mat4, Light, Shape, Material, Scene, Texture
 } = tiny;
 
 const camera_blending_factor = 0.1;
@@ -45,7 +46,8 @@ export class Project extends Scene {
         // At the beginning of our program, load one of each of these shape definitions onto the GPU.
         this.shapes = {
             sphere16: new defs.Subdivision_Sphere(4),
-            bird: new Shape_From_File("assets/bird.obj"),
+            // bird: new Shape_From_File("assets/bird.obj"),
+            bird: new BirdModel(),
             cone: new defs.Closed_Cone(4, 4, [[0, 1], [1, 0]])
         };
 

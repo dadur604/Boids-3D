@@ -1,11 +1,12 @@
 import {defs, tiny} from '../examples/common.js';
+import {percent_unique_birds, bird_speed} from "./bird_manager.js"
 
 const {
     Vector, Vector3, vec, vec3, vec4, color, hex_color, Shader, Matrix, Mat4, Light, Shape, Material, Scene,
 } = tiny;
 
-const bird_speed = 20;
-const turn_speed = 0.5;
+
+const player_turn_speed = 0.5;
 const smooth_y_coefficient = 0.1
 const max_roll_angle = 0.3;
 const roll_speed_coefficient = 0.02
@@ -34,9 +35,21 @@ export class Bird {
 
     this.smoothed_y = 0;
 
-    this.bird_speed = bird_speed;
+    // Bird Settings
+    this.is_unique = Math.random() < percent_unique_birds;
+
+    this.bird_speed = randomized(bird_speed, this.is_unique ? 0.2 : 0.05);
+    this.seperation_lerp_amount = randomized(this.bird_manager.seperation_lerp_amount, this.is_unique ? 0.1 : 0.05);
+    this.alignment_lerp_amount = randomized(this.bird_manager.alignment_lerp_amount, this.is_unique ? 0.1 : 0.05);
+    this.cohesion_lerp_amount = randomized(this.bird_manager.cohesion_lerp_amount, this.is_unique ? 0.1 : 0.05);
   
     this.cone = cone;
+
+    this.brake_away_duration = 0;
+
+    this.rand = Math.random();
+    this.dive_t = 0;
+    this.rise_t = 0;
   }
 
   // turn_x -1 or +1 if turning left or right.
@@ -55,8 +68,24 @@ export class Bird {
     let velocity = this.direction.normalized();
 
     if (!player_controls) {
-      velocity = this.calculateBoidDesiredDirection().normalized();
-    }
+        velocity = this.calculateBoidDesiredDirection().normalized();
+      
+      if (this.brake_away_duration > 0) {
+        // performing brake away
+        this.brake_away_duration -= dt;
+        const t = Math.min(1, this.bird_manager.brake_away_duration - this.brake_away_duration);
+        velocity = this.brake_away_target_velocity.times(t).plus(velocity.times(1-t));
+      }
+
+      // Every second there's a 1% chance of doing a "brake off"
+      if (Math.random() < this.bird_manager.brake_away_chance * dt) {
+        this.brake_away_duration = this.bird_manager.brake_away_duration;
+        // Pick a random direction to brake away in, from 0 to 180 dregrees
+        const angle = Math.random() * Math.PI;
+        this.brake_away_target_velocity = Mat4.rotation(angle, ...this.position).times(velocity.to4(false)).to3();
+        console.log("Performing Brake Away!")
+      }
+    } 
 
     velocity.scale_by(this.bird_speed);
     velocity.scale_by(dt);
@@ -65,6 +94,7 @@ export class Bird {
     const new_position = this.position.plus(velocity);
 
     let elevation_angle = - Math.PI / 2 + Math.acos(velocity.normalized().dot(gravity_vector));
+    this.elevation_angle = elevation_angle;
     const speed_y = Math.sin(elevation_angle) * this.bird_speed;
     current_height += speed_y * dt;
     
@@ -78,7 +108,7 @@ export class Bird {
     let angleRadians = Math.acos(fromDirection.normalized().dot(toDirection.normalized()));
 
     // First turn bird according to turn_x
-    velocity = Mat4.rotation(turn_x * turn_speed * dt, gravity_vector[0], gravity_vector[1], gravity_vector[2]).times(velocity.to4(false)).to3();
+    velocity = Mat4.rotation(turn_x * player_turn_speed * dt, gravity_vector[0], gravity_vector[1], gravity_vector[2]).times(velocity.to4(false)).to3();
     // Then turn bird accourding to turn_y
     const roll_axis = gravity_vector.cross(velocity);
 
@@ -176,7 +206,7 @@ export class Bird {
     // Sepeartion
     if (seperationDirection.norm() != 0) {
       seperationDirection.scale_by(1.0 / numBirdsInFlock);
-      const t = this.bird_manager.seperation_lerp_amount;
+      const t = this.seperation_lerp_amount;
       direction = seperationDirection.normalized().times(t).plus(direction.times(1-t));
       direction.normalize();
     }
@@ -184,7 +214,7 @@ export class Bird {
     // Alignment
     if (averageAlignment.norm() != 0) {
       averageAlignment.scale_by(1.0 / numBirdsInFlock);
-      const t = this.bird_manager.alignment_lerp_amount;
+      const t = this.alignment_lerp_amount;
       direction = averageAlignment.normalized().times(t).plus(direction.times(1-t));
       direction.normalize();
     }
@@ -193,7 +223,7 @@ export class Bird {
     if (localCenterOfMass.norm() != 0) {
       localCenterOfMass.scale_by(1.0 / numBirdsInFlock);
       cohesionDirection = localCenterOfMass.minus(this.position.copy());
-      const t = this.bird_manager.cohesion_lerp_amount;
+      const t = this.cohesion_lerp_amount;
       direction = cohesionDirection.normalized().times(t).plus(direction.times(1-t));
       direction.normalize();
     }
@@ -221,14 +251,23 @@ export class Bird {
     let bird_transform = initial_transformation.copy();
 
     // Rotate model in model space such that bird beak is facing correctly
-    bird_transform.pre_multiply(Mat4.rotation(- Math.PI, 0,1,0));
+    bird_transform.pre_multiply(Mat4.rotation(- Math.PI / 2, 1,0,0));
     // Add roll when turning
     bird_transform.pre_multiply(Mat4.rotation(this.roll_angle, 0,0,-1));
     // Make bird face its own direction
     bird_transform.pre_multiply(Mat4.inverse(Mat4.look_at(vec3(0,0,0), this.direction, this.position)));
     // Translate to bird position in world space
     bird_transform.pre_multiply(Mat4.translation(...this.position));
-    this.shape.draw(context, program_state, bird_transform, this.material);
+
+    const bird_color = hex_color("#ffffff").times(this.brake_away_duration).plus((hex_color("#22ff22").times(1-this.brake_away_duration)));
+    this.dive_t = 0.9 * this.dive_t + 0.1 * (this.elevation_angle < 0 ? 1 : 0);
+    this.rise_t = 0.9 * this.rise_t + 0.1 * (this.elevation_angle > 0.1 ? 1 : 0);
+    this.shape.draw(context, program_state, bird_transform, {
+      rand_uid: this.rand,
+      is_unique: this.is_unique,
+      wing_angle_stop_t: this.dive_t,
+      wing_angle_double_t: this.rise_t
+    });
 
     if (this.collision !== null) {
 
@@ -260,4 +299,8 @@ export class Bird {
     }
 
   }
+}
+
+const randomized = (initial_value, percent_to_randomize) => {
+  return initial_value * (1 + percent_to_randomize * (Math.random() - 0.5));
 }
