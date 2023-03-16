@@ -19,7 +19,8 @@ const polar_to_cart = (theta, phi, r) => ([
 ]);
 
 
-const planet_radius = 120;
+const planet_radius = 140;
+const water_radius = 133;
 const planet_1_color = hex_color("#aaaaaa");
 
 const b_theta = Math.PI / 2;
@@ -36,7 +37,7 @@ const sun_color = hex_color("#ffffff");
 // update collisions only ten twenty per second
 // and each update, only update `collision_batch_size` birds
 const collision_dt = 0.05;
-const collision_batch_size = 10;
+const collision_batch_size = 5;
 
 export class Project extends Scene {
     constructor() {
@@ -45,44 +46,23 @@ export class Project extends Scene {
 
         // At the beginning of our program, load one of each of these shape definitions onto the GPU.
         this.shapes = {
-            sphere16: new defs.Subdivision_Sphere(4),
+            water_sphere: new defs.Subdivision_Sphere(3),
+            sphere16: new Shape_From_File("assets/world.obj"),
             // bird: new Shape_From_File("assets/bird.obj"),
             bird: new BirdModel(),
             cone: new defs.Closed_Cone(4, 4, [[0, 1], [1, 0]])
         };
 
-        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
-            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(1,0.1,0.1).pre_multiply(Mat4.translation(1,0,0)))
-
-        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
-            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(0.2,0.2,0.2).pre_multiply(Mat4.translation(0.5,0.5,0)))
-
-        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
-            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(0.1,1,0.2).pre_multiply(Mat4.translation(0,1,0)))
-
-        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
-            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(1,1,0.2).pre_multiply(Mat4.translation(0.5,0.6,0)))
-
-        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
-            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(1,0.1,0.1).pre_multiply(Mat4.translation(-1,0,0)))
-
-        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
-            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(0.2,0.2,0.2).pre_multiply(Mat4.translation(-0.5,0.5,0)))
-
-        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
-            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(0.1,1,0.2).pre_multiply(Mat4.translation(0,-1,0)))
-
-        defs.Closed_Cone.insert_transformed_copy_into(this.shapes.sphere16, 
-            [4, 4, [[0, 1], [1, 0]]], Mat4.scale(1,1,0.2).pre_multiply(Mat4.translation(0.5,-0.6,0)))
-
         // *** Materials
         this.materials = {
             planet_1: new Material(new defs.Phong_Shader(),
-                {ambient: 0.5, diffusivity: .5, color: planet_1_color})           
+                {ambient: 0.2, diffusivity: .2, color: planet_1_color}),
+            water: new Material(new defs.Phong_Shader(),
+                {ambient: 0.5, diffusivity: .4, specular: .8, color: hex_color("#0000ff", 0.8)})         
         }
 
         this.bird_manager = new BirdManager()
-        this.collision_manager = new CollisionManager(this.shapes.sphere16, Mat4.scale(planet_radius,planet_radius,planet_radius))
+        this.collision_manager = new CollisionManager(this.shapes.sphere16, Mat4.scale(120,120,120,))
 
         this.player_bird = new Bird(
             this.bird_manager,
@@ -152,8 +132,10 @@ export class Project extends Scene {
 
         // ====Planets====
 
-        const planet_transform = Mat4.scale(planet_radius,planet_radius,planet_radius);
+        const planet_transform = Mat4.scale(120,120,120);
         this.shapes.sphere16.draw(context, program_state, planet_transform, this.materials.planet_1)
+        const water_transform = Mat4.scale(water_radius,water_radius,water_radius);
+        this.shapes.water_sphere.draw(context, program_state, water_transform, this.materials.water)
 
         // ====Bird====
 

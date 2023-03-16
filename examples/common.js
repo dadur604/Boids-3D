@@ -600,13 +600,13 @@ const Phong_Shader = defs.Phong_Shader =
                 vec3 phong_model_lights( vec3 N, vec3 vertex_worldspace ){       
                     
                     float height = length(vertex_worldspace);
+                    vec4 sand = vec4(0.9,0.8,0.7,1);
                     vec4 grass = vec4(0,1,0,1);
-                    vec4 dirt = vec4(0.5,0.3,0,1);
                     vec4 snow = vec4(1,1,1,1);
                     
-                    float dirt_t = smoothstep(120.0, 140.0, height);
-                    float snow_t = smoothstep(140.0, 200.0, height);
-                    vec4 mat_color = grass + dirt_t * (dirt - grass) + snow_t * (snow - dirt);
+                    float grass_t = smoothstep(134.0, 137.0, height);
+                    float snow_t = smoothstep(140.0, 300.0, height);
+                    vec4 mat_color = sand + grass_t * (grass - sand) + snow_t * (snow - grass);
 
                     // phong_model_lights():  Add up the lights' contributions.
                     vec3 E = normalize( camera_center - vertex_worldspace );
