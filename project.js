@@ -57,7 +57,8 @@ export class Project extends Scene {
             sphere16: new Shape_From_File("assets/world_smooth.obj"),
             // bird: new Shape_From_File("assets/bird.obj"),
             bird: new BirdModel(),
-            cone: new defs.Closed_Cone(4, 4, [[0, 1], [1, 0]])
+            cone: new defs.Closed_Cone(4, 4, [[0, 1], [1, 0]]),
+            tree1: new Shape_From_File("assets/trees/1.obj"),
         };
 
         // *** Materials
@@ -69,7 +70,13 @@ export class Project extends Scene {
             // planet_1: new Material(new Depth_Shader()),
             water: new Material(new Water_Shader(),
                 {ambient: 0.5, diffusivity: .4, specular: .8, color: hex_color("#3333ff", 0.8), ground_depth_texture: null,
-                    fogFar: FOG_FAR, fogNear: FOG_NEAR, fogColor: FOG_COLOR})         
+                    fogFar: FOG_FAR, fogNear: FOG_NEAR, fogColor: FOG_COLOR})  ,
+            tree: new Material(new defs.Textured_Phong(), {
+                color: hex_color("#000000"),
+                ambient: 0.5, diffusivity: 0.5, specularity: 0.1,
+                texture: new Texture("assets/tree.png", "LINEAR"),
+                fogFar: FOG_FAR, fogNear: FOG_NEAR, fogColor: FOG_COLOR
+            })       
         }
 
         this.bird_manager = new BirdManager()
@@ -133,6 +140,7 @@ export class Project extends Scene {
 
         this.materials.planet_1.replace(mat);
         this.materials.water.replace(mat);
+        this.materials.tree.replace(mat);
         this.shapes.bird.material.replace(mat);
     }
 
@@ -239,6 +247,12 @@ export class Project extends Scene {
         const water_transform = Mat4.scale(water_radius,water_radius,water_radius);
         this.shapes.water_sphere.draw(context, program_state, water_transform, this.materials.water)
 
+        if (!this.trees) {
+            this.initTrees();
+        } else {
+            this.drawTrees(context, program_state);
+        }
+
         // ====Bird====
 
         const turn_x = this.control_x_l * -1 + this.control_x_r * 1;
@@ -264,12 +278,61 @@ export class Project extends Scene {
 
         this.player_bird.draw(context, program_state);
         for (const bird of this.other_birds) {
+            // if bird is on other side of planet then don't render
+            const dist = (bird.position.minus(this.player_bird.position)).norm();
+            if (dist > planet_radius * 2) continue;
             bird.draw(context, program_state);
         }
-
-
         
         // ==============
     }
+
+    drawTrees(context, program_state) {
+        const tree_base_txm = Mat4.translation(0,0,1.5).times(Mat4.rotation(Math.PI/2, 1, 0, 0));
+        for (const tree of this.trees) {
+            // if tree is on other side of planet then don't render
+            const dist = (tree.pos.minus(this.player_bird.position)).norm();
+            if (dist > planet_radius * 2) continue;
+            try {
+                let tree_transform = tree_base_txm.copy();
+                // scale randomly between 1.5 and 3
+                tree_transform.pre_multiply(Mat4.scale(tree.scale, tree.scale, tree.scale));
+                // face tree up from origin
+                // move the tree
+                tree_transform.pre_multiply(Mat4.inverse(Mat4.look_at(vec3(...tree.pos), vec3(0,0,0), vec3(0,1,0))));
+
+                this.shapes.tree1.draw(context, program_state, tree_transform, this.materials.tree);
+            } catch (e) {
+                continue;
+            }
+        }
+        
+    }
+
+    initTrees() {
+        if (!this.shapes.sphere16.ready) return;
+
+        const scale_txm = Mat4.scale(120, 120, 120);
+        const min_tree_height = 1.15;
+        const max_tree_height = 1.3;
+
+        const num_trees = 100;
+        this.trees = []
+        while (this.trees.length < num_trees) {
+            const rand_idx = Math.floor(Math.random() * this.shapes.sphere16.arrays.position.length);
+            const vertex_pos = this.shapes.sphere16.arrays.position[rand_idx];
+
+            // check if vertex is within our height allowance
+            const height = vertex_pos.norm();
+            if (height < min_tree_height || height > max_tree_height) continue;
+
+            this.trees.push({
+                pos: scale_txm.times(vertex_pos),
+                scale: 1.5 + Math.random() * 1.5
+            });
+        }
+
+    }
 }
+
 
