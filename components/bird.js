@@ -269,35 +269,6 @@ export class Bird {
       wing_angle_double_t: this.rise_t
     });
 
-    if (this.collision !== null) {
-
-      let arrow_position = this.position.plus(this.direction.times(this.collision.t));
-      let arrow_direction = this.collision.normal;
-
-      let arrow_transform = initial_transformation.copy();
-      // Scale cone by 5
-      // arrow_transform.pre_multiply(Mat4.scale(10,10,10));
-      // Rotate cone such that it faces arrow direction
-      arrow_transform.pre_multiply(Mat4.inverse(Mat4.look_at(vec3(0,0,0), arrow_direction, arrow_position)));
-      // Translate to arrow position in world space
-      arrow_transform.pre_multiply(Mat4.translation(...arrow_position));
-      this.cone.draw(context, program_state, arrow_transform, this.material.override({color: hex_color("#ff2222")}))
-
-      if (this.reflectedDirection) {
-        let reflectedArrowDirection = this.reflectedDirection;
-
-        let reflectedArrowTransform = initial_transformation.copy();
-        // Scale cone by 5
-        reflectedArrowTransform.pre_multiply(Mat4.scale(1,1,5));
-        // Rotate cone such that it faces arrow direction
-        reflectedArrowTransform.pre_multiply(Mat4.inverse(Mat4.look_at(vec3(0,0,0), reflectedArrowDirection, arrow_position)));
-        // Translate to arrow position in world space
-        reflectedArrowTransform.pre_multiply(Mat4.translation(...arrow_position));
-
-        this.cone.draw(context, program_state, reflectedArrowTransform, this.material.override({color: hex_color("#ffff22")}))
-      }
-    }
-
   }
 }
 
