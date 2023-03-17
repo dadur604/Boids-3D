@@ -54,6 +54,19 @@ const Square = defs.Square =
             this.indices.push(0, 1, 2, 1, 3, 2);
         }
     }
+    
+const SkyboxSquare = defs.SkyboxSquare =
+    class Square extends Shape {
+        // **Square** demonstrates two triangles that share vertices.  On any planar surface, the
+        // interior edges don't make any important seams.  In these cases there's no reason not
+        // to re-use data of the common vertices between triangles.  This makes all the vertex
+        // arrays (position, normals, etc) smaller and more cache friendly.
+        constructor() {
+            super("position", "normal", "texture_coord");
+            // Specify the 4 square corner locations, and match those up with normal vectors:
+            this.arrays.position = Vector.cast([-1, -1], [1, -1], [-1, 1], [-1, 1], [1, -1], [1, 1]);
+        }
+    }
 
 
 const Tetrahedron = defs.Tetrahedron =

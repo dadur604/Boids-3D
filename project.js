@@ -7,6 +7,7 @@ import { BirdModel } from './components/bird_model.js';
 import { Terrain_Shader } from './components/terrain_shader.js';
 import { Water_Shader } from './components/water_shader.js';
 import { Depth_Shader, GROUND_DEPTH_TEX_SIZE, Buffered_Texture } from './components/depth_shader.js';
+import { CubeMapShader, CubeMapTexture } from './components/cube_map.js';
 
 
 const {
@@ -59,6 +60,7 @@ export class Project extends Scene {
             bird: new BirdModel(),
             cone: new defs.Closed_Cone(4, 4, [[0, 1], [1, 0]]),
             tree1: new Shape_From_File("assets/trees/1.obj"),
+            skybox: new defs.SkyboxSquare(),
         };
 
         // *** Materials
@@ -76,7 +78,17 @@ export class Project extends Scene {
                 ambient: 0.5, diffusivity: 0.5, specularity: 0.1,
                 texture: new Texture("assets/tree.png", "LINEAR"),
                 fogFar: FOG_FAR, fogNear: FOG_NEAR, fogColor: FOG_COLOR
-            })       
+            }),
+            skybox: new Material(new CubeMapShader(), {
+                texture: new CubeMapTexture([
+                    "assets/skybox/pos-x.png",
+                    "assets/skybox/neg-x.png",
+                    "assets/skybox/pos-y.png",
+                    "assets/skybox/neg-y.png",
+                    "assets/skybox/pos-z.png",
+                    "assets/skybox/neg-z.png",
+                ], "LINEAR")
+            })
         }
 
         this.bird_manager = new BirdManager()
@@ -283,6 +295,9 @@ export class Project extends Scene {
             if (dist > planet_radius * 2) continue;
             bird.draw(context, program_state);
         }
+
+        context.context.depthFunc(context.context.LEQUAL);
+        this.shapes.skybox.draw(context, program_state, Mat4.identity(), this.materials.skybox);
         
         // ==============
     }
