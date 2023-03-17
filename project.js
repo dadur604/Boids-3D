@@ -4,6 +4,9 @@ import {Bird} from "./components/bird.js"
 import { BirdManager } from './components/bird_manager.js';
 import { CollisionManager } from './components/collision_manager.js';
 import { BirdModel } from './components/bird_model.js';
+import { Terrain_Shader } from './components/terrain_shader.js';
+import { Water_Shader } from './components/water_shader.js';
+import { Depth_Shader, GROUND_DEPTH_TEX_SIZE, Buffered_Texture } from './components/depth_shader.js';
 
 
 const {
@@ -47,7 +50,7 @@ export class Project extends Scene {
         // At the beginning of our program, load one of each of these shape definitions onto the GPU.
         this.shapes = {
             water_sphere: new defs.Subdivision_Sphere(3),
-            sphere16: new Shape_From_File("assets/world.obj"),
+            sphere16: new Shape_From_File("assets/world_smooth.obj"),
             // bird: new Shape_From_File("assets/bird.obj"),
             bird: new BirdModel(),
             cone: new defs.Closed_Cone(4, 4, [[0, 1], [1, 0]])
@@ -55,10 +58,12 @@ export class Project extends Scene {
 
         // *** Materials
         this.materials = {
-            planet_1: new Material(new defs.Phong_Shader(),
-                {ambient: 0.2, diffusivity: .2, color: planet_1_color}),
-            water: new Material(new defs.Phong_Shader(),
-                {ambient: 0.5, diffusivity: .4, specular: .8, color: hex_color("#0000ff", 0.8)})         
+            ground_depth_mat: new Material(new Depth_Shader(), {}),
+            planet_1: new Material(new Terrain_Shader(),
+                {ambient: 0.4, diffusivity: 0.5, specularity: 0.05}),
+            // planet_1: new Material(new Depth_Shader()),
+            water: new Material(new Water_Shader(),
+                {ambient: 0.5, diffusivity: .4, specular: .8, color: hex_color("#3333ff", 0.8), ground_depth_texture: null})         
         }
 
         this.bird_manager = new BirdManager()
@@ -110,19 +115,61 @@ export class Project extends Scene {
         this.key_triggered_button("View Globe", ["r"], () => this.view_globe = !this.view_globe);
     }
 
+    // Sourced from 2-pass shadow example, modified
+    texture_buffer_init(gl) {
+        // Depth Texture
+        this.groundDepthTexture = gl.createTexture();
+        // Bind it to TinyGraphics
+        this.ground_depth_texture = new Buffered_Texture(this.groundDepthTexture);
+        this.materials.water.ground_depth_texture = this.ground_depth_texture
+        this.groundDepthTextureSize = GROUND_DEPTH_TEX_SIZE;
+
+        // Depth Texture Buffer
+        this.groundDepthFramebuffer = gl.createFramebuffer();
+
+        // create a color texture of the same size as the depth texture
+        gl.bindTexture(gl.TEXTURE_2D, this.groundDepthTexture);
+        gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            this.groundDepthTextureSize,
+            this.groundDepthTextureSize,
+            0,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            null,
+        );
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // attach it to the framebuffer
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.groundDepthFramebuffer);
+        gl.framebufferTexture2D(
+            gl.FRAMEBUFFER,        // target
+            gl.COLOR_ATTACHMENT0,  // attachment point
+            gl.TEXTURE_2D,         // texture target
+            this.groundDepthTexture,// texture
+            0);                    // mip level
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
     display(context, program_state) {
-        // display():  Called once per frame of animation.
-        // Setup -- This part sets up the scene's overall camera matrix, projection matrix, and lights:
+        const gl = context.context;
+        if (!this.init_ok) {
+            this.texture_buffer_init(gl);
+            this.init_ok = true;
+        }
+
         if (!context.scratchpad.controls) {
             this.children.push(context.scratchpad.controls = new defs.Movement_Controls());
             // Define the global camera and projection matrices, which are stored in program_state.
             program_state.set_camera(this.initial_camera_location);
         }
 
-        program_state.projection_transform = Mat4.perspective(
-            Math.PI / 4, context.width / context.height, .1, 1000);
-
         const t = program_state.animation_time / 1000, dt = program_state.animation_delta_time / 1000 || 1/60.;
+        this.materials.water.replace({time: t})
 
         // ====Lighting====
 
@@ -132,7 +179,41 @@ export class Project extends Scene {
 
         // ====Planets====
 
+        // FIRST dray our world to the ground depth buffer
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.groundDepthFramebuffer);
+        gl.viewport(0, 0, this.groundDepthTextureSize, this.groundDepthTextureSize);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        const ground_view_mat = Mat4.look_at(this.player_bird.position.normalized().times(planet_radius * 4), vec3(0,0,0), this.player_bird.direction);
+        const ground_proj_mat = Mat4.perspective(Math.PI / 4, 1, 0.5, 500);
+        program_state.ground_view_mat = ground_view_mat;
+        program_state.ground_proj_mat = ground_proj_mat;
+        program_state.ground_tex_mat = ground_proj_mat;
+        program_state.view_mat = ground_view_mat;
+        program_state.projection_transform = ground_proj_mat;
+
         const planet_transform = Mat4.scale(120,120,120);
+        this.shapes.sphere16.draw(context, program_state, planet_transform, this.materials.ground_depth_mat)
+
+        // THEN draw rest of scene as normal
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        // ====Camera====
+        program_state.projection_transform = Mat4.perspective(
+            Math.PI / 4, context.width / context.height, .1, 1000);
+
+        if (this.view_globe) {
+            program_state.set_camera(Mat4.look_at(this.player_bird.position.normalized().times(planet_radius * 4), vec3(0,0,0), this.player_bird.direction))
+        } else {
+            program_state.set_camera(Mat4.look_at(
+                this.player_bird.position.plus(this.player_bird.position.normalized().times(20).plus(this.player_bird.direction.normalized().times(-20))),
+                this.player_bird.position,
+                this.player_bird.direction));
+        }
+        // ===========
+
         this.shapes.sphere16.draw(context, program_state, planet_transform, this.materials.planet_1)
         const water_transform = Mat4.scale(water_radius,water_radius,water_radius);
         this.shapes.water_sphere.draw(context, program_state, water_transform, this.materials.water)
@@ -165,16 +246,7 @@ export class Project extends Scene {
             bird.draw(context, program_state);
         }
 
-        // ====Camera====
-        
-        if (this.view_globe) {
-            program_state.set_camera(Mat4.look_at(this.player_bird.position.normalized().times(planet_radius * 4), vec3(0,0,0), this.player_bird.direction))
-        } else {
-            program_state.set_camera(Mat4.look_at(
-                this.player_bird.position.plus(this.player_bird.position.normalized().times(20).plus(this.player_bird.direction.normalized().times(-20))),
-                this.player_bird.position,
-                this.player_bird.direction));
-        }
+
         
         // ==============
     }
