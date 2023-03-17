@@ -79,7 +79,8 @@ export const Water_Shader = class Water_Shader extends Shader {
                 
                 uniform mat4 model_transform;
                 uniform mat4 projection_camera_model_transform;
-                
+                uniform mat4 camera_model_transform;
+                varying float fogDepth;                
         
                 void main(){     
                     // The vertex's final resting place (in NDCS):
@@ -96,6 +97,8 @@ export const Water_Shader = class Water_Shader extends Shader {
                     // The final normal vector in screen space.
                     N = normalize( mat3( model_transform ) * normal / squared_scale);
                     vertex_worldspace = ( model_transform * vec4( position, 1.0 ) ).xyz;
+                    
+                    fogDepth = -(camera_model_transform * vec4(position, 1.0)).z;
                   } `
     );
   }
@@ -107,28 +110,36 @@ export const Water_Shader = class Water_Shader extends Shader {
     return (
       this.shared_glsl_code() +
       `     
-                void main(){       
-                    vec4 ground_tex_coord = (ground_proj_mat * ground_view_mat * vec4(vertex_worldspace, 1.0));
-                    // convert NDCS from ground's POV to ground depth texture coordinates
-                    ground_tex_coord.xyz /= ground_tex_coord.w; 
-                    ground_tex_coord.xyz *= 0.5;
-                    ground_tex_coord.xyz += 0.5;
-                    float ground_depth = texture2D(ground_depth_texture, ground_tex_coord.xy).x;
-                    ground_depth = smoothstep(0.0,0.6,ground_depth);
-                        
-                    // Compute an initial (ambient) color:
-                    gl_FragColor = vec4( color.xyz * ambient, color.w );
-                    // Compute the final color with contributions from lights:
-                    gl_FragColor.xyz += phong_model_lights( normalize( N ), vertex_worldspace );
+      uniform vec4 fogColor;
+      varying float fogDepth;
+      uniform float fogNear;
+      uniform float fogFar;
 
-                    // gl_FragColor.xyz += whiteness * cos(whiteness * 10.0 - time + 10.0) * vec3(0.2,0.2,0.2);
+      void main(){       
+          vec4 ground_tex_coord = (ground_proj_mat * ground_view_mat * vec4(vertex_worldspace, 1.0));
+          // convert NDCS from ground's POV to ground depth texture coordinates
+          ground_tex_coord.xyz /= ground_tex_coord.w; 
+          ground_tex_coord.xyz *= 0.5;
+          ground_tex_coord.xyz += 0.5;
+          float ground_depth = texture2D(ground_depth_texture, ground_tex_coord.xy).x;
+          ground_depth = smoothstep(0.0,0.6,ground_depth);
+              
+          // Compute an initial (ambient) color:
+          gl_FragColor = vec4( color.xyz * ambient, color.w );
+          // Compute the final color with contributions from lights:
+          gl_FragColor.xyz += phong_model_lights( normalize( N ), vertex_worldspace );
 
-                    // in deep ocean, add more dark blue
-                    float deep_ocean_t = smoothstep(0.0,0.03,ground_depth);
-                      gl_FragColor.xyz -= (1.0-deep_ocean_t) * vec3(0.1,0.1,0.1);
+          // gl_FragColor.xyz += whiteness * cos(whiteness * 10.0 - time + 10.0) * vec3(0.2,0.2,0.2);
 
-                    gl_FragColor.xyz += ground_depth * (max(0.0,cos(ground_depth * 50.0 - time + 30.0)) + 0.1) * vec3(0.5,0.5,0.5);
-                  } `
+          // in deep ocean, add more dark blue
+          float deep_ocean_t = smoothstep(0.0,0.03,ground_depth);
+            gl_FragColor.xyz -= (1.0-deep_ocean_t) * vec3(0.1,0.1,0.1);
+
+          gl_FragColor.xyz += ground_depth * (max(0.0,cos(ground_depth * 50.0 - time + 30.0)) + 0.1) * vec3(0.5,0.5,0.5);
+        
+          float fogAmount = smoothstep(fogNear, fogFar, fogDepth);
+          gl_FragColor = gl_FragColor + (fogColor - gl_FragColor) * fogAmount;
+        } `
     );
   }
 
@@ -141,6 +152,9 @@ export const Water_Shader = class Water_Shader extends Shader {
     gl.uniform1f(gpu.specularity, material.specularity);
     gl.uniform1f(gpu.smoothness, material.smoothness);
     gl.uniform1f(gpu.time, material.time);
+    gl.uniform1f(gpu.fogNear, material.fogNear);
+    gl.uniform1f(gpu.fogFar, material.fogFar);
+    gl.uniform4fv(gpu.fogColor, material.fogColor);
   }
 
   send_gpu_state(gl, gpu, gpu_state, model_transform) {
@@ -173,6 +187,7 @@ export const Water_Shader = class Water_Shader extends Shader {
       false,
       Matrix.flatten_2D_to_1D(PCM.transposed())
     );
+    gl.uniformMatrix4fv(gpu.camera_model_transform, false, Matrix.flatten_2D_to_1D(gpu_state.camera_inverse.times(model_transform).transposed()));
 
     // Omitting lights will show only the material color, scaled by the ambient term:
     if (!gpu_state.lights.length) return;

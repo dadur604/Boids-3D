@@ -598,16 +598,6 @@ const Phong_Shader = defs.Phong_Shader =
                 varying vec3 N, vertex_worldspace;
                 // ***** PHONG SHADING HAPPENS HERE: *****                                       
                 vec3 phong_model_lights( vec3 N, vec3 vertex_worldspace ){       
-                    
-                    float height = length(vertex_worldspace);
-                    vec4 sand = vec4(0.9,0.8,0.7,1);
-                    vec4 grass = vec4(0,1,0,1);
-                    vec4 snow = vec4(1,1,1,1);
-                    
-                    float grass_t = smoothstep(134.0, 137.0, height);
-                    float snow_t = smoothstep(140.0, 300.0, height);
-                    vec4 mat_color = sand + grass_t * (grass - sand) + snow_t * (snow - grass);
-
                     // phong_model_lights():  Add up the lights' contributions.
                     vec3 E = normalize( camera_center - vertex_worldspace );
                     vec3 result = vec3( 0.0 );
@@ -630,7 +620,7 @@ const Phong_Shader = defs.Phong_Shader =
                         float specular = pow( max( dot( N, H ), 0.0 ), smoothness );
                         float attenuation = 1.0 / (1.0 + light_attenuation_factors[i] * distance_to_light * distance_to_light );
                         
-                        vec3 light_contribution = mat_color.xyz * light_colors[i].xyz * diffusivity * diffuse
+                        vec3 light_contribution = shape_color.xyz * light_colors[i].xyz * diffusivity * diffuse
                                                                   + light_colors[i].xyz * specularity * specular;
                         result += attenuation * light_contribution;
                       }
@@ -646,6 +636,8 @@ const Phong_Shader = defs.Phong_Shader =
                 
                 uniform mat4 model_transform;
                 uniform mat4 projection_camera_model_transform;
+                uniform mat4 camera_model_transform;
+                varying float fogDepth;
         
                 void main(){                                                                   
                     // The vertex's final resting place (in NDCS):
@@ -653,6 +645,7 @@ const Phong_Shader = defs.Phong_Shader =
                     // The final normal vector in screen space.
                     N = normalize( mat3( model_transform ) * normal / squared_scale);
                     vertex_worldspace = ( model_transform * vec4( position, 1.0 ) ).xyz;
+                    fogDepth = -(camera_model_transform * vec4(position, 1.0)).z;
                   } `;
         }
 
@@ -661,12 +654,20 @@ const Phong_Shader = defs.Phong_Shader =
             // A fragment is a pixel that's overlapped by the current triangle.
             // Fragments affect the final image or get discarded due to depth.
             return this.shared_glsl_code() + `
+                uniform vec4 fogColor;
+                varying float fogDepth;
+                uniform float fogNear;
+                uniform float fogFar;
+
                 void main(){                                                           
                     // Compute an initial (ambient) color:
                     gl_FragColor = vec4( shape_color.xyz * ambient, shape_color.w );
                     // Compute the final color with contributions from lights:
                     gl_FragColor.xyz += phong_model_lights( normalize( N ), vertex_worldspace );
-                  } `;
+
+                    float fogAmount = smoothstep(fogNear, fogFar, fogDepth);
+                    gl_FragColor = gl_FragColor + (fogColor - gl_FragColor) * fogAmount;
+                } `;
         }
 
         send_material(gl, gpu, material) {
@@ -679,6 +680,9 @@ const Phong_Shader = defs.Phong_Shader =
             gl.uniform1f(gpu.smoothness, material.smoothness);
             gl.uniform1f(gpu.smoothness, material.smoothness);
             gl.uniform2fv(gpu.tex_offset, material.tex_offset);
+            gl.uniform1f(gpu.fogNear, material.fogNear);
+            gl.uniform1f(gpu.fogFar, material.fogFar);
+            gl.uniform4fv(gpu.fogColor, material.fogColor);
         }
 
         send_gpu_state(gl, gpu, gpu_state, model_transform) {
@@ -699,6 +703,7 @@ const Phong_Shader = defs.Phong_Shader =
             const PCM = gpu_state.projection_transform.times(gpu_state.camera_inverse).times(model_transform);
             gl.uniformMatrix4fv(gpu.model_transform, false, Matrix.flatten_2D_to_1D(model_transform.transposed()));
             gl.uniformMatrix4fv(gpu.projection_camera_model_transform, false, Matrix.flatten_2D_to_1D(PCM.transposed()));
+            gl.uniformMatrix4fv(gpu.camera_model_transform, false, Matrix.flatten_2D_to_1D(gpu_state.camera_inverse.times(model_transform).transposed()));
 
             // Omitting lights will show only the material color, scaled by the ambient term:
             if (!gpu_state.lights.length)
@@ -747,6 +752,8 @@ const Textured_Phong = defs.Textured_Phong =
                 
                 uniform mat4 model_transform;
                 uniform mat4 projection_camera_model_transform;
+                uniform mat4 camera_model_transform;
+                varying float fogDepth;
         
                 void main(){                                                                   
                     // The vertex's final resting place (in NDCS):
@@ -756,6 +763,8 @@ const Textured_Phong = defs.Textured_Phong =
                     vertex_worldspace = ( model_transform * vec4( position, 1.0 ) ).xyz;
                     // Turn the per-vertex texture coordinate into an interpolated variable.
                     f_tex_coord = texture_coord + tex_offset;
+
+                    fogDepth = -(camera_model_transform * vec4(position, 1.0)).z;
                   } `;
         }
 
@@ -766,16 +775,35 @@ const Textured_Phong = defs.Textured_Phong =
             return this.shared_glsl_code() + `
                 varying vec2 f_tex_coord;
                 uniform sampler2D texture;
-        
+                uniform vec4 fogColor;
+                varying float fogDepth;
+                uniform float fogNear;
+                uniform float fogFar;
+
                 void main(){
                     // Sample the texture image in the correct place:
                     vec4 tex_color = texture2D( texture, f_tex_coord );
                     if( tex_color.w < .01 ) discard;
-                                                                             // Compute an initial (ambient) color:
+                                                                                // Compute an initial (ambient) color:
                     gl_FragColor = vec4( ( tex_color.xyz + shape_color.xyz ) * ambient, shape_color.w * tex_color.w ); 
-                                                                             // Compute the final color with contributions from lights:
+                                                                                // Compute the final color with contributions from lights:
                     gl_FragColor.xyz += phong_model_lights( normalize( N ), vertex_worldspace );
-                  } `;
+                    
+                    float fogAmount = smoothstep(fogNear, fogFar, fogDepth);
+                    gl_FragColor = gl_FragColor + (fogColor - gl_FragColor) * fogAmount;           
+                } `;
+        }
+
+        send_material(gl, gpu, material) {
+            super.send_material(gl, gpu, material);
+            gl.uniform1f(gpu.fogNear, material.fogNear);
+            gl.uniform1f(gpu.fogFar, material.fogFar);
+            gl.uniform4fv(gpu.fogColor, material.fogColor);        
+        }
+
+        send_gpu_state(gl, gpu, gpu_state, model_transform) {
+            super.send_gpu_state(gl, gpu, gpu_state, model_transform);
+            gl.uniformMatrix4fv(gpu.camera_model_transform, false, Matrix.flatten_2D_to_1D(gpu_state.camera_inverse.times(model_transform).transposed()));
         }
 
         update_GPU(context, gpu_addresses, gpu_state, model_transform, material) {

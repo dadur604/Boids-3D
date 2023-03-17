@@ -76,6 +76,8 @@ export const Terrain_Shader = class Terrain_Shader extends Shader {
                 
                 uniform mat4 model_transform;
                 uniform mat4 projection_camera_model_transform;
+                uniform mat4 camera_model_transform;
+                varying float fogDepth;
         
                 void main(){     
                     // The vertex's final resting place (in NDCS):
@@ -100,7 +102,8 @@ export const Terrain_Shader = class Terrain_Shader extends Shader {
 
                     if (height > 135.0)
                       color = angle * color + (1.0-angle) * rock;
-
+                    
+                    fogDepth = -(camera_model_transform * vec4(position, 1.0)).z;
                   } `
     );
   }
@@ -112,12 +115,20 @@ export const Terrain_Shader = class Terrain_Shader extends Shader {
     return (
       this.shared_glsl_code() +
       `
-                void main(){                                                           
-                    // Compute an initial (ambient) color:
-                    gl_FragColor = vec4( color.xyz * ambient, color.w );
-                    // Compute the final color with contributions from lights:
-                    gl_FragColor.xyz += phong_model_lights( normalize( N ), vertex_worldspace );
-                  } `
+      uniform vec4 fogColor;
+      varying float fogDepth;
+      uniform float fogNear;
+      uniform float fogFar;
+
+      void main(){                                                           
+          // Compute an initial (ambient) color:
+          gl_FragColor = vec4( color.xyz * ambient, color.w );
+          // Compute the final color with contributions from lights:
+          gl_FragColor.xyz += phong_model_lights( normalize( N ), vertex_worldspace );
+
+          float fogAmount = smoothstep(fogNear, fogFar, fogDepth);
+          gl_FragColor = gl_FragColor + (fogColor - gl_FragColor) * fogAmount;
+        } `
     );
   }
 
@@ -129,6 +140,9 @@ export const Terrain_Shader = class Terrain_Shader extends Shader {
     gl.uniform1f(gpu.specularity, material.specularity);
     gl.uniform1f(gpu.smoothness, material.smoothness);
     gl.uniform1f(gpu.smoothness, material.smoothness);
+    gl.uniform1f(gpu.fogNear, material.fogNear);
+    gl.uniform1f(gpu.fogFar, material.fogFar);
+    gl.uniform4fv(gpu.fogColor, material.fogColor);
   }
 
   send_gpu_state(gl, gpu, gpu_state, model_transform) {
@@ -161,6 +175,7 @@ export const Terrain_Shader = class Terrain_Shader extends Shader {
       false,
       Matrix.flatten_2D_to_1D(PCM.transposed())
     );
+    gl.uniformMatrix4fv(gpu.camera_model_transform, false, Matrix.flatten_2D_to_1D(gpu_state.camera_inverse.times(model_transform).transposed()));
 
     // Omitting lights will show only the material color, scaled by the ambient term:
     if (!gpu_state.lights.length) return;

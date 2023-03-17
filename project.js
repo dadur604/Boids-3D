@@ -22,9 +22,13 @@ const polar_to_cart = (theta, phi, r) => ([
 ]);
 
 
+export const FOG_NEAR = 100;
+export const FOG_FAR = 400;
+export const FOG_NEAR_Globe = 400;
+export const FOG_FAR_Globe = 600;
+export const FOG_COLOR = hex_color("#aaaacc");
 const planet_radius = 140;
 const water_radius = 133;
-const planet_1_color = hex_color("#aaaaaa");
 
 const b_theta = Math.PI / 2;
 const b_phi = 0;
@@ -60,10 +64,12 @@ export class Project extends Scene {
         this.materials = {
             ground_depth_mat: new Material(new Depth_Shader(), {}),
             planet_1: new Material(new Terrain_Shader(),
-                {ambient: 0.4, diffusivity: 0.5, specularity: 0.05}),
+                {ambient: 0.4, diffusivity: 0.5, specularity: 0.05,
+                    fogFar: FOG_FAR, fogNear: FOG_NEAR, fogColor: FOG_COLOR}),
             // planet_1: new Material(new Depth_Shader()),
             water: new Material(new Water_Shader(),
-                {ambient: 0.5, diffusivity: .4, specular: .8, color: hex_color("#3333ff", 0.8), ground_depth_texture: null})         
+                {ambient: 0.5, diffusivity: .4, specular: .8, color: hex_color("#3333ff", 0.8), ground_depth_texture: null,
+                    fogFar: FOG_FAR, fogNear: FOG_NEAR, fogColor: FOG_COLOR})         
         }
 
         this.bird_manager = new BirdManager()
@@ -112,7 +118,22 @@ export class Project extends Scene {
         this.key_triggered_button("Pitch Up", ["s"], () => this.control_y_u = 1, undefined, () => this.control_y_u = 0);
         this.key_triggered_button("Pitch Down", ["w"], () => this.control_y_d = 1, undefined, () => this.control_y_d = 0);
 
-        this.key_triggered_button("View Globe", ["r"], () => this.view_globe = !this.view_globe);
+        this.key_triggered_button("View Globe", ["r"], this.toggle_view_globe.bind(this));
+    }
+
+    toggle_view_globe() {
+        this.view_globe = !this.view_globe;
+
+        let mat;
+        if (this.view_globe) {
+            mat = {fogNear: FOG_NEAR_Globe, fogFar: FOG_FAR_Globe};
+        } else {
+            mat = {fogNear: FOG_NEAR, fogFar: FOG_FAR};
+        }
+
+        this.materials.planet_1.replace(mat);
+        this.materials.water.replace(mat);
+        this.shapes.bird.material.replace(mat);
     }
 
     // Sourced from 2-pass shadow example, modified

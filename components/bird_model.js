@@ -1,5 +1,6 @@
 import {defs, tiny} from '../examples/common.js';
 import {Shape_From_File} from "../examples/obj-file-demo.js";
+import { FOG_FAR, FOG_NEAR, FOG_COLOR } from '../project.js';
 
 const {
   Vector, Vector3, vec, vec3, vec4, color, hex_color, Shader, Matrix, Mat4, Light, Shape, Material, Scene, Texture
@@ -17,7 +18,8 @@ export class BirdModel {
     this.material = new Material(new defs.Textured_Phong(), {
       color: hex_color("#000000"),
       ambient: 0.5, diffusivity: 0.5, specularity: 0.1,
-      texture: new Texture("../assets/texture.png", "LINEAR")
+      texture: new Texture("../assets/texture.png", "LINEAR"),
+      fogFar: FOG_FAR, fogNear: FOG_NEAR, fogColor: FOG_COLOR
     });
 
   }
