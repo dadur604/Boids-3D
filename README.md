@@ -8,17 +8,13 @@ You are a lone bird tired of your hometown and decide to head for adventure. You
 
 In the past I had created a [boids](https://en.wikipedia.org/wiki/Boids) simulation in 2D. I plan to extend this to 3D, and include a continuous globe over which the birds can fly and explore. You will control one of the birds as others fly around and with you.
 
-
-<img src="https://i.imgur.com/UXdkhnL.gif" width="400" height="270" />
-
 ### Topics Used
 
 Will use basic shading, transformations, matrices, and cameras to build a world and place many birds on the scene. Will use emergent behavior (boids) to control autonomous birds, which relies on vector and matrix mathematics.
 
 ### Demo
 
-
-<img src="https://i.imgur.com/ny1XIMn.gif" width="400" height="270" />
+<img src="https://i.imgur.com/ny1XIMn.gif" width="600" height="338" />
 
 ### Interactivity
 
@@ -43,12 +39,11 @@ There are also **two camera views** : You can either view your bird in third per
 
 I used a custom **terrain shader** to add a stylized look to the terrain. The shader uses the height of each vertex above the origin to determine the materia – sand, grass, or snow, and also uses the vertex's normal to determine if it should be a rocky material.
 
-<img src="https://i.imgur.com/IktJMTy.png
-" width="400" height="270" />
+<img src="https://i.imgur.com/IktJMTy.png" width="400" height="270" />
 
 I implemented a stylized **water shader** to make the water look nicer. The water shader has waves using animation time. I also implemented a water-depth-based water shading. To enable this, I first render the globe terrain's height to a frame buffer. Then, I sample the terrain height in the water shader to determine the _water depth_. I then add some white ripples when the water is shallow, and make the water darker when it's deeper.
 
-<img src="https://i.imgur.com/ZUUg389.png" width="400" height="270" />
+<img src="https://i.imgur.com/ZUUg389.gif" width="400" height="270" />
 
 I also added a simple **animation** to the bird's wings. When diving, the wings stay flat. During normal flying, they flap, and when ascending quickly, they flap faster.
 
