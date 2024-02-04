@@ -75,4 +75,4 @@ Low Poly Bird Object: ([Link](https://sketchfab.com/3d-models/low-poly-bird-db7d
 
 Low Poly Trees Pack ([Link](https://brokenvector.itch.io/low-poly-tree-pack))
 
-This project is tested with Browserstack
+This project is tested with Browserstack.
