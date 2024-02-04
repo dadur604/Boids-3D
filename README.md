@@ -74,3 +74,5 @@ Stylized Water Shader Ideas ([Link](https://alexanderameye.github.io/notes/styli
 Low Poly Bird Object: ([Link](https://sketchfab.com/3d-models/low-poly-bird-db7d3a43dea0491db49a8a20966da8ca))
 
 Low Poly Trees Pack ([Link](https://brokenvector.itch.io/low-poly-tree-pack))
+
+This project is tested with Browserstack
